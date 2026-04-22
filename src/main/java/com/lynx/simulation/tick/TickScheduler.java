@@ -1,11 +1,15 @@
 package com.lynx.simulation.tick;
 
+import com.lynx.simulation.model.Stock;
 import com.lynx.simulation.repository.StockRepository;
 import com.lynx.simulation.repository.PriceHistoryRepository;
+import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
+
+import java.util.List;
 
 @Component
 @Slf4j
@@ -18,6 +22,30 @@ public class TickScheduler {
 
     private boolean marketOpen = true;
     private int currentTick = 0;
+
+    @PostConstruct
+    public void init() {
+        List<Stock> stocks = stockRepository.findAll();
+        stocks.forEach(stock -> {
+            priceHistoryRepository
+                    .findTopByTickerOrderByTimestampDesc(stock.getTicker())
+                    .ifPresent(lastPrice -> {
+                        stock.setCurrentPrice(lastPrice.getClose());
+                        stockRepository.save(stock);
+                        log.info("Restored {} price to {}", stock.getTicker(), lastPrice.getClose());
+                    });
+        });
+
+        // Restore tick counter
+        long count = (long) priceHistoryRepository
+                .countByTickerAndTimestampAfter(
+                        stocks.get(0).getTicker(),
+                        stocks.get(0).getListedAt()
+                );
+        currentTick = (int) count;
+        log.info("Restored tick counter to {}", currentTick);
+    }
+
 
     @Scheduled(fixedRateString = "${simulation.tick-rate-ms}")
     public void tick() {
@@ -43,6 +71,19 @@ public class TickScheduler {
 
     public void closeMarket() {
         this.marketOpen = false;
+
+        List<Stock> stocks = stockRepository.findAll();
+        stocks.forEach(stock -> {
+            // Reset daily OHLC for next session
+            stock.setOpenPrice(stock.getCurrentPrice());
+            stock.setHighPrice(stock.getCurrentPrice());
+            stock.setLowPrice(stock.getCurrentPrice());
+            stock.setVolume(0);
+            stockRepository.save(stock);
+        });
+
+        log.info("Daily OHLC reset complete, market ready for next session");
+
         log.info("Market closed");
     }
 }
