@@ -23,9 +23,8 @@ spring:
       # Sending JSON payloads for Market Events and Price Updates
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
-    #disabling non functioning kafka
     listener:
-      auto-startup: false
+      auto-startup: true
 
 
   # 2. The In-Memory Cache (Redis)

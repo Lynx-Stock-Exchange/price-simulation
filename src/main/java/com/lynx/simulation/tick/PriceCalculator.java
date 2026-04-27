@@ -1,7 +1,9 @@
 package com.lynx.simulation.tick;
 
+import com.lynx.simulation.events.OrderPressureTracker;
 import com.lynx.simulation.model.PriceHistory;
 import com.lynx.simulation.model.Stock;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
@@ -9,7 +11,10 @@ import java.time.Instant;
 
 @Service
 @Slf4j
+@RequiredArgsConstructor
 public class PriceCalculator {
+
+    private final OrderPressureTracker orderPressureTracker;
 
     // §6.2 formula: new_price = current + random_walk + order_pressure + event_component
     public PriceHistory calculate(Stock stock, int tick) {
@@ -19,10 +24,14 @@ public class PriceCalculator {
         double randomWalk = current * stock.getVolatility() * (Math.random() * 2 - 1)
                 + stock.getTrendBias();
 
-        // Order pressure component — placeholder until Person B provides Redis data
-        double orderPressure = 0.0;
+        // Order pressure component — net buy/sell imbalance scaled to price delta
+        OrderPressureTracker.PressureData pressure = orderPressureTracker.getAndResetPressure(stock.getTicker());
+        long totalVol = pressure.getTotalVolume();
+        double orderPressure = ((double)(pressure.buyVolume() - pressure.sellVolume()) / (totalVol + 1))
+                * current * stock.getMomentum();
+        stock.setVolume(stock.getVolume() + totalVol);
 
-        // Event component — placeholder until Person B provides active event data
+        // Event component — pending integration with the market events service
         double eventComponent = 0.0;
 
         // Calculate new price, minimum 0.01 to avoid negative prices
