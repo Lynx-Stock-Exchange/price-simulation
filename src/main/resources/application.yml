@@ -13,12 +13,12 @@ spring:
     consumer:
       group-id: price-sim-consumer-group
       auto-offset-reset: latest
-      # Expecting JSON payloads for incoming Orders
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
-      #value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
-      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
       properties:
-        spring.json.trusted.packages: "com.lynx.simulation.model.*"
+        spring.json.trusted.packages: "*"
+        spring.json.use.type.headers: "false"
+        spring.json.value.default.type: "java.util.LinkedHashMap"
     producer:
       # Sending JSON payloads for Market Events and Price Updates
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
@@ -52,5 +52,54 @@ spring:
 simulation:
   tick-rate-ms: 1000
   auto-event-probability: 0.005
+  fee-rate: 0.001
   market-open-hour: 9
   market-close-hour: 17
+  start-date: "2024-01-15"
+  events:
+    definitions:
+      - event-type: BULL_RUN
+        scope: MARKET
+        target: ~
+        magnitude: 1.5
+        duration-ticks: 10
+        weight: 1.0
+        headlines:
+          - "Global interest rates slashed unexpectedly!"
+          - "Strong GDP data beats expectations across all sectors."
+      - event-type: BEAR_CRASH
+        scope: MARKET
+        target: ~
+        magnitude: 1.8
+        duration-ticks: 10
+        weight: 1.0
+        headlines:
+          - "Global recession fears grip markets."
+          - "Central bank rate hike sends stocks tumbling."
+      - event-type: SECTOR_BOOM
+        scope: SECTOR
+        target: TECH
+        magnitude: 1.5
+        duration-ticks: 15
+        weight: 1.0
+        headlines:
+          - "Tech giants report record quarterly earnings."
+          - "AI investment surge drives sector-wide rally."
+      - event-type: SECTOR_SLUMP
+        scope: SECTOR
+        target: TECH
+        magnitude: 1.8
+        duration-ticks: 20
+        weight: 1.0
+        headlines:
+          - "Regulatory concerns shake the Tech sector."
+          - "Silicon shortage hits hardware manufacturers."
+      - event-type: STOCK_SHOCK
+        scope: STOCK
+        target: ARKA
+        magnitude: 2.0
+        duration-ticks: 5
+        weight: 0.5
+        headlines:
+          - "Breaking: Arkadia Technologies faces unexpected audit."
+          - "Insider trading allegations rock ARKA stock."
