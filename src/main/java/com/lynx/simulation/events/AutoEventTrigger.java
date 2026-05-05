@@ -120,11 +120,7 @@ public class AutoEventTrigger {
         payload.put("duration_ticks", event.durationTicks());
         payload.put("market_time", simulatedClock.getFormattedTime());
 
-        Map<String, Object> envelope = new HashMap<>();
-        envelope.put("type", "MARKET_EVENT");
-        envelope.put("payload", payload);
-
-        kafkaTemplate.send("market.events", event.eventId(), envelope);
+        kafkaTemplate.send("market-events", event.eventId(), payload);
         log.info("🚨 MARKET SHOCK STARTED: [{}] {} (Magnitude: {}, Duration: {} ticks)", event.scope(), event.headline(), event.magnitude(), event.durationTicks());
     }
 
