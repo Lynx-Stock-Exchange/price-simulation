@@ -21,6 +21,7 @@ public class OrderUpdateProducer {
     public void sendOrderUpdate(Order order) {
         // HashMap used instead of Map.of() to safely handle null fill price/fee (e.g. expired orders)
         Map<String, Object> payload = new HashMap<>();
+        payload.put("platform_id", order.getPlatformId());
         payload.put("order_id", order.getOrderId());
         payload.put("status", order.getStatus());
         payload.put("filled_quantity", order.getFilledQuantity());
@@ -28,10 +29,7 @@ public class OrderUpdateProducer {
         payload.put("exchange_fee", order.getExchangeFee() != null ? order.getExchangeFee() : 0.0);
         payload.put("market_time", simulatedClock.getFormattedTime());
 
-        kafkaTemplate.send("order.update", order.getOrderId(), Map.of(
-                "type", "ORDER_UPDATE",
-                "payload", payload
-        ));
+        kafkaTemplate.send("order-updates", order.getOrderId(), payload);
         log.info("Order update sent: {} -> {}", order.getOrderId(), order.getStatus());
     }
 }

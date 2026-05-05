@@ -19,16 +19,13 @@ public class PriceUpdateProducer {
         double change = stock.getCurrentPrice() - stock.getOpenPrice();
         double changePct = stock.getOpenPrice() > 0 ? (change / stock.getOpenPrice()) * 100 : 0.0;
 
-        kafkaTemplate.send("price.update", stock.getTicker(), Map.of(
-                "type", "PRICE_UPDATE",
-                "payload", Map.of(
-                        "ticker", stock.getTicker(),
-                        "price", stock.getCurrentPrice(),
-                        "change", change,
-                        "change_pct", changePct,
-                        "volume", stock.getVolume(),
-                        "market_time", simulatedClock.getFormattedTime()
-                )
+        kafkaTemplate.send("price-updates", stock.getTicker(), Map.of(
+                "ticker", stock.getTicker(),
+                "price", stock.getCurrentPrice(),
+                "change", change,
+                "change_pct", changePct,
+                "volume", stock.getVolume(),
+                "market_time", simulatedClock.getFormattedTime()
         ));
     }
 }
