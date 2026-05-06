@@ -15,7 +15,7 @@ public class OrderPlacedConsumer {
 
     private final OrderPressureTracker pressureTracker;
 
-    @KafkaListener(topics = "order.requests", groupId = "price-sim-consumer-group")
+    @KafkaListener(topics = "orders.requests", groupId = "price-sim-consumer-group")
     public void consumeOrder(Map<String, Object> orderPayload) {
         try {
             String instrumentType = (String) orderPayload.get("instrument_type");

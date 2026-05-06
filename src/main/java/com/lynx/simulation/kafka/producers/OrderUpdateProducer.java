@@ -29,7 +29,7 @@ public class OrderUpdateProducer {
         payload.put("exchange_fee", order.getExchangeFee() != null ? order.getExchangeFee() : 0.0);
         payload.put("market_time", simulatedClock.getFormattedTime());
 
-        kafkaTemplate.send("order-updates", order.getOrderId(), payload);
+        kafkaTemplate.send("orders.updates", order.getOrderId(), payload);
         log.info("Order update sent: {} -> {}", order.getOrderId(), order.getStatus());
     }
 }
