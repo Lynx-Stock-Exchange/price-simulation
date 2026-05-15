@@ -1,42 +1,33 @@
 package com.lynx.simulation.events;
 
-import com.lynx.simulation.config.EventDefinitionConfig;
 import com.lynx.simulation.model.ActiveMarketEvent;
 import com.lynx.simulation.model.Stock;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
-import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ThreadLocalRandom;
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class AutoEventTrigger {
 
-    private final KafkaTemplate<String, Object> kafkaTemplate;
-    private final EventDefinitionConfig eventConfig;
     private final MarketState marketState;
-    private final SimulatedClock simulatedClock;
-
-    @Value("${simulation.auto-event-probability:0.005}")
-    private double eventProbability;
 
     private final Map<String, EventTracker> activeEvents = new ConcurrentHashMap<>();
     private static final String MARKET_WIDE_KEY = "GLOBAL_MARKET";
 
+    /**
+     * Called each tick. Handles expiration of active events only.
+     * Triggering is now the responsibility of market-events service.
+     */
     public void onTick() {
         if (!marketState.isOpen()) return;
         processExpirations();
-        evaluateRandomEvent();
     }
 
     private void processExpirations() {
@@ -50,49 +41,29 @@ public class AutoEventTrigger {
         });
     }
 
-    private void evaluateRandomEvent() {
-        if (ThreadLocalRandom.current().nextDouble() <= eventProbability) {
-            triggerEvent();
-        }
+    /**
+     * Called by the market.events Kafka consumer when market-events publishes
+     * an event (either auto-triggered or admin-triggered). Registers the event
+     * in activeEvents so the price calculator can apply its magnitude.
+     */
+    public void registerEffect(Map<String, Object> payload) {
+        String eventType   = stringVal(payload, "event_type", "UNKNOWN");
+        String scope       = stringVal(payload, "scope", "MARKET");
+        String target      = (String) payload.get("target");
+        double magnitude   = toDouble(payload.get("magnitude"), 1.0);
+        int durationTicks  = toInt(payload.get("duration_ticks"), 10);
+        String headline    = stringVal(payload, "headline", eventType + " event triggered.");
+        String eventId     = stringVal(payload, "event_id", UUID.randomUUID().toString());
+        String triggeredBy = stringVal(payload, "triggered_by", "SYSTEM");
+
+        ActiveMarketEvent event = new ActiveMarketEvent(
+                eventId, eventType, scope, target, headline,
+                magnitude, durationTicks, Instant.now(), triggeredBy);
+
+        applyToActiveEvents(event);
     }
 
-    private void triggerEvent() {
-        ActiveMarketEvent newEvent = drawRandomEventFromSeed();
-        if (newEvent == null) return;
-        fireEvent(newEvent);
-    }
-
-    public void triggerEventByType(String eventType) {
-        List<EventDefinitionConfig.EventDefinition> defs = eventConfig.getDefinitions();
-        EventDefinitionConfig.EventDefinition def = defs.stream()
-                .filter(d -> d.getEventType().equalsIgnoreCase(eventType))
-                .findFirst()
-                .orElse(null);
-
-        if (def == null) {
-            log.warn("No event definition found for type: {}", eventType);
-            return;
-        }
-
-        List<String> headlines = def.getHeadlines();
-        String headline = headlines.isEmpty()
-                ? def.getEventType() + " event triggered."
-                : headlines.get(ThreadLocalRandom.current().nextInt(headlines.size()));
-
-        fireEvent(new ActiveMarketEvent(
-                UUID.randomUUID().toString(),
-                def.getEventType(),
-                def.getScope(),
-                def.getTarget(),
-                headline,
-                def.getMagnitude(),
-                def.getDurationTicks(),
-                Instant.now(),
-                "ADMIN"
-        ));
-    }
-
-    private void fireEvent(ActiveMarketEvent event) {
+    private void applyToActiveEvents(ActiveMarketEvent event) {
         EventTracker tracker = new EventTracker(event);
 
         if ("MARKET".equalsIgnoreCase(event.scope())) {
@@ -109,57 +80,8 @@ public class AutoEventTrigger {
             activeEvents.put(event.target(), tracker);
         }
 
-        // Build envelope matching the spec §5.3 MARKET_EVENT wire format
-        Map<String, Object> payload = new HashMap<>();
-        payload.put("event_id", event.eventId());
-        payload.put("event_type", event.eventType());
-        payload.put("headline", event.headline());
-        payload.put("scope", event.scope());
-        payload.put("target", event.target()); // null for MARKET scope per §3.6
-        payload.put("magnitude", event.magnitude());
-        payload.put("duration_ticks", event.durationTicks());
-        payload.put("market_time", simulatedClock.getFormattedTime());
-
-        kafkaTemplate.send("market.events", event.eventId(), payload);
-        log.info("🚨 MARKET SHOCK STARTED: [{}] {} (Magnitude: {}, Duration: {} ticks)", event.scope(), event.headline(), event.magnitude(), event.durationTicks());
-    }
-
-    private ActiveMarketEvent drawRandomEventFromSeed() {
-        List<EventDefinitionConfig.EventDefinition> defs = eventConfig.getDefinitions();
-        if (defs.isEmpty()) {
-            log.warn("No event definitions configured — skipping event trigger.");
-            return null;
-        }
-
-        // Weighted random selection
-        double totalWeight = defs.stream().mapToDouble(EventDefinitionConfig.EventDefinition::getWeight).sum();
-        double rand = ThreadLocalRandom.current().nextDouble(totalWeight);
-        double cumulative = 0;
-        EventDefinitionConfig.EventDefinition chosen = defs.getLast();
-        for (EventDefinitionConfig.EventDefinition def : defs) {
-            cumulative += def.getWeight();
-            if (rand < cumulative) {
-                chosen = def;
-                break;
-            }
-        }
-
-        List<String> headlines = chosen.getHeadlines();
-        String headline = headlines.isEmpty()
-                ? chosen.getEventType() + " event triggered."
-                : headlines.get(ThreadLocalRandom.current().nextInt(headlines.size()));
-
-        return new ActiveMarketEvent(
-                UUID.randomUUID().toString(),
-                chosen.getEventType(),
-                chosen.getScope(),
-                chosen.getTarget(),
-                headline,
-                chosen.getMagnitude(),
-                chosen.getDurationTicks(),
-                Instant.now(),
-                "SYSTEM"
-        );
+        log.info("⚡ PRICE EFFECT REGISTERED: [{}] {} (Magnitude: {}, Duration: {} ticks)",
+                event.scope(), event.headline(), event.magnitude(), event.durationTicks());
     }
 
     public double getActiveMagnitudeFor(Stock stock) {
@@ -175,6 +97,23 @@ public class AutoEventTrigger {
         if (stockLevel != null) combined *= stockLevel.event.magnitude();
 
         return combined;
+    }
+
+    private String stringVal(Map<String, Object> map, String key, String def) {
+        Object v = map == null ? null : map.get(key);
+        return v != null ? String.valueOf(v) : def;
+    }
+
+    private double toDouble(Object val, double def) {
+        if (val == null) return def;
+        if (val instanceof Number n) return n.doubleValue();
+        try { return Double.parseDouble(String.valueOf(val)); } catch (NumberFormatException e) { return def; }
+    }
+
+    private int toInt(Object val, int def) {
+        if (val == null) return def;
+        if (val instanceof Number n) return n.intValue();
+        try { return Integer.parseInt(String.valueOf(val)); } catch (NumberFormatException e) { return def; }
     }
 
     private static class EventTracker {

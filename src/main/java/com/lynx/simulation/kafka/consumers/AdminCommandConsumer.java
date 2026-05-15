@@ -1,6 +1,5 @@
 package com.lynx.simulation.kafka.consumers;
 
-import com.lynx.simulation.events.AutoEventTrigger;
 import com.lynx.simulation.tick.OrderMatchingEngine;
 import com.lynx.simulation.tick.TickScheduler;
 import lombok.RequiredArgsConstructor;
@@ -16,7 +15,6 @@ import java.util.Map;
 public class AdminCommandConsumer {
 
     private final TickScheduler tickScheduler;
-    private final AutoEventTrigger autoEventTrigger;
     private final OrderMatchingEngine orderMatchingEngine;
 
     @KafkaListener(topics = "admin.commands", groupId = "price-sim-admin-group")
@@ -32,15 +30,7 @@ public class AdminCommandConsumer {
             switch (action.toUpperCase()) {
                 case "OPEN_MARKET" -> tickScheduler.adminOpenMarket();
                 case "CLOSE_MARKET" -> tickScheduler.adminCloseMarket();
-                case "TRIGGER_EVENT" -> {
-                    String eventType = (String) commandPayload.get("event_type");
-                    if (eventType == null) {
-                        log.warn("TRIGGER_EVENT command missing required field: event_type");
-                        return;
-                    }
-                    autoEventTrigger.triggerEventByType(eventType);
-                    log.warn("🎯 ADMIN COMMAND: Triggered market event of type {}", eventType);
-                }
+                case "TRIGGER_EVENT" -> log.info("TRIGGER_EVENT via admin.commands is no longer used; events flow through market-events service.");
                 case "UPDATE_FEE" -> {
                     Object feeRateRaw = commandPayload.get("fee_rate");
                     if (feeRateRaw == null) {

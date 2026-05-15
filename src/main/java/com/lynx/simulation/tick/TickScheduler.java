@@ -3,6 +3,7 @@ package com.lynx.simulation.tick;
 import com.lynx.simulation.events.AutoEventTrigger;
 import com.lynx.simulation.events.MarketState;
 import com.lynx.simulation.events.SimulatedClock;
+import com.lynx.simulation.kafka.producers.MarketStatusProducer;
 import com.lynx.simulation.kafka.producers.PriceUpdateProducer;
 import com.lynx.simulation.model.Stock;
 import com.lynx.simulation.repository.StockRepository;
@@ -29,10 +30,13 @@ public class TickScheduler {
     private final PriceHistoryRepository priceHistoryRepository;
     private final PriceCalculator priceCalculator;
     private final PriceUpdateProducer priceUpdateProducer;
+    private final MarketStatusProducer marketStatusProducer;
     private final OrderMatchingEngine orderMatchingEngine;
     private final AutoEventTrigger autoEventTrigger;
     private final MarketState marketState;
     private final SimulatedClock simulatedClock;
+    private final com.lynx.simulation.repository.OptionRepository optionRepository;
+    private final com.lynx.simulation.kafka.producers.OptionProducer optionProducer;
 
     @Value("${simulation.market-open-hour:9}")
     private int marketOpenHour;
@@ -81,7 +85,7 @@ public class TickScheduler {
         reloadCache();
         int tradingMinutesPerDay = (marketCloseHour - marketOpenHour) * 60;
         simulatedClock.seed(LocalDate.parse(startDateStr), marketOpenHour, currentTick, tradingMinutesPerDay);
-        marketState.setOpen(true);
+        openMarket();
         int minuteOfDay = simulatedClock.getMinuteOfDay();
         log.info("Market opened on startup. Simulated time: {}:{}", minuteOfDay / 60,
                 String.format("%02d", minuteOfDay % 60));
@@ -154,7 +158,9 @@ public class TickScheduler {
 
     public synchronized void openMarket() {
         marketState.setOpen(true);
-        log.info("Market opened");
+        marketStatusProducer.sendStatusChange(true);
+        optionRepository.findAll().forEach(optionProducer::send);
+        log.info("Market opened, published {} options to Kafka", optionRepository.count());
     }
 
     public synchronized void closeMarket() {
@@ -170,6 +176,7 @@ public class TickScheduler {
             stockRepository.save(stock);
         });
 
+        marketStatusProducer.sendStatusChange(false);
         log.info("Daily OHLC reset complete, market closed");
     }
 }
